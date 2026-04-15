@@ -140,7 +140,7 @@ export default function App() {
       accounts.forEach(acc => {
         socket.emit('refresh_data', acc.id);
       });
-    }, 60000); // 1 minute sync
+    }, 600000); // 10 minute sync
 
     return () => clearInterval(refreshInterval);
   }, [socket, accounts]);
@@ -950,8 +950,8 @@ export default function App() {
               <TabsTrigger value="logs">系统日志</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="realtime" className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <TabsContent value="realtime" className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-5 gap-4">
                 {accounts.length === 0 ? (
                   <Card className="col-span-full p-12 text-center border-dashed border-2 border-neutral-200 bg-neutral-50/50">
                     <div className="flex flex-col items-center gap-4">
@@ -979,21 +979,21 @@ export default function App() {
                           status === 'reconnecting' ? 'bg-orange-500' : 
                           'bg-neutral-300'
                         }`} />
-                        <CardHeader className="pb-4 pt-5">
+                        <CardHeader className="pb-2 pt-3 px-4">
                           <div className="flex items-center justify-between">
-                            <div className="space-y-1">
-                              <CardTitle className="text-2xl font-black tracking-tight flex items-center gap-2">
+                            <div className="space-y-0.5">
+                              <CardTitle className="text-lg font-bold tracking-tight flex items-center gap-1.5">
                                 {account.name}
-                                {status === 'connected' && <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />}
+                                {status === 'connected' && <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />}
                               </CardTitle>
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className={`text-[10px] font-bold uppercase tracking-wider ${
+                              <div className="flex items-center gap-1.5">
+                                <Badge variant="outline" className={`text-[9px] px-1 h-4 font-bold uppercase tracking-wider ${
                                   account.isActive ? 'bg-green-50 text-green-700 border-green-200' : 'bg-neutral-100 text-neutral-500 border-neutral-200'
                                 }`}>
-                                  {account.isActive ? 'API Active' : 'API Disabled'}
+                                  {account.isActive ? 'Active' : 'Disabled'}
                                 </Badge>
-                                <span className="text-[10px] font-medium text-neutral-400 uppercase tracking-widest">
-                                  {status === 'connected' ? 'WebSocket Connected' : 'Disconnected'}
+                                <span className="text-[9px] font-medium text-neutral-400 uppercase tracking-tight">
+                                  {status === 'connected' ? 'WS ON' : 'WS OFF'}
                                 </span>
                               </div>
                             </div>
@@ -1001,73 +1001,73 @@ export default function App() {
                               <Button 
                                 variant="outline" 
                                 size="icon" 
-                                className="h-9 w-9 rounded-lg border-neutral-200 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200"
+                                className="h-7 w-7 rounded-md border-neutral-200 hover:bg-orange-50 hover:text-orange-600"
                                 onClick={() => {
                                   socket?.emit('refresh_data', account.id);
                                   toast.info(`正在刷新 ${account.name} 数据...`);
                                 }}
                                 disabled={!account.isActive}
                               >
-                                <RefreshCw className="w-4 h-4" />
+                                <RefreshCw className="w-3.5 h-3.5" />
                               </Button>
                               <Button 
                                 variant="outline" 
                                 size="icon" 
-                                className="h-9 w-9 rounded-lg border-neutral-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                                className="h-7 w-7 rounded-md border-neutral-200 hover:bg-red-50 hover:text-red-600"
                                 onClick={() => deleteAccount(account.id)}
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </Button>
                             </div>
                           </div>
                         </CardHeader>
-                        <CardContent className="space-y-6 pb-6">
-                          <div className="grid grid-cols-1 gap-4">
-                            <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-100 group hover:bg-white hover:shadow-sm transition-all">
-                              <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">现货 USDT 余额</p>
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-3xl font-black tracking-tighter text-neutral-900">
+                        <CardContent className="space-y-3 pb-4 px-4">
+                          <div className="grid grid-cols-1 gap-2.5">
+                            <div className="p-2.5 rounded-lg bg-neutral-50 border border-neutral-100 group hover:bg-white hover:shadow-sm transition-all">
+                              <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">现货 USDT 余额</p>
+                              <div className="flex items-baseline gap-1.5">
+                                <span className="text-xl font-black tracking-tighter text-neutral-900">
                                   {parseFloat(summary.spot).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
-                                <span className="text-xs font-bold text-neutral-400">USDT</span>
+                                <span className="text-[10px] font-bold text-neutral-400">USDT</span>
                               </div>
                             </div>
                             
-                            <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-100 group hover:bg-white hover:shadow-sm transition-all">
-                              <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">合约 钱包余额</p>
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-3xl font-black tracking-tighter text-neutral-900">
+                            <div className="p-2.5 rounded-lg bg-neutral-50 border border-neutral-100 group hover:bg-white hover:shadow-sm transition-all">
+                              <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">合约 钱包余额</p>
+                              <div className="flex items-baseline gap-1.5">
+                                <span className="text-xl font-black tracking-tighter text-neutral-900">
                                   {parseFloat(summary.fut).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
-                                <span className="text-xs font-bold text-neutral-400">USDT</span>
+                                <span className="text-[10px] font-bold text-neutral-400">USDT</span>
                               </div>
                             </div>
-
-                            <div className="p-5 rounded-xl bg-orange-50 border border-orange-100 group hover:bg-orange-100/30 transition-all">
-                              <div className="flex items-center justify-between mb-1">
-                                <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">合约 可用保证金</p>
-                                <TrendingUp className="w-4 h-4 text-orange-500" />
+ 
+                            <div className="p-3 rounded-lg bg-orange-50 border border-orange-100 group hover:bg-orange-100/30 transition-all">
+                              <div className="flex items-center justify-between mb-0.5">
+                                <p className="text-[9px] font-black text-orange-600 uppercase tracking-widest">合约 可用保证金</p>
+                                <TrendingUp className="w-3 h-3 text-orange-500" />
                               </div>
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-5xl font-black tracking-tighter text-orange-600">
+                              <div className="flex items-baseline gap-1.5">
+                                <span className="text-2xl font-black tracking-tighter text-orange-600">
                                   {parseFloat(summary.avail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
-                                <span className="text-sm font-black text-orange-400">USDT</span>
+                                <span className="text-[10px] font-black text-orange-400">USDT</span>
                               </div>
                             </div>
                           </div>
                           
                           <Button 
                             variant={account.isActive ? "destructive" : "default"} 
-                            className={`w-full h-12 font-bold text-sm rounded-xl shadow-sm ${
+                            className={`w-full h-9 font-bold text-xs rounded-lg shadow-sm ${
                               !account.isActive ? 'bg-green-600 hover:bg-green-700' : ''
                             }`}
                             onClick={() => toggleAccount(account.id)}
                           >
                             {account.isActive ? (
-                              <><PowerOff className="w-4 h-4 mr-2" /> 关闭 API 接口</>
+                              <><PowerOff className="w-3.5 h-3.5 mr-1.5" /> 关闭 API</>
                             ) : (
-                              <><Power className="w-4 h-4 mr-2" /> 开启 API 接口</>
+                              <><Power className="w-3.5 h-3.5 mr-1.5" /> 开启 API</>
                             )}
                           </Button>
                         </CardContent>

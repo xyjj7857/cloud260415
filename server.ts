@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 import http from "http";
 import fs from "fs";
 import cookieParser from "cookie-parser";
+import axios from "axios";
 import { 
   saveIncomes, 
   saveTrades, 
@@ -68,6 +69,7 @@ async function startServer() {
   let accounts = getAccounts();
   const wsClients: Record<string, WebsocketClient> = {};
   const wsStatuses: Record<string, string> = {};
+  const lastWsMessageTime: Record<string, number> = {};
 
   // Local state to avoid REST API calls
   const accountStates: Record<string, {
@@ -78,6 +80,86 @@ async function startServer() {
   }> = {};
 
   const lastSyncTime: Record<string, number> = {}; // Track last sync to avoid frequency
+  let pollingAccountIndex = 0;
+  let lastPolledMinute = -1;
+
+  async function updateLocalState(accountId: string) {
+    const account = accounts.find(a => a.id === accountId);
+    if (!account || !account.isActive) return;
+
+    await waitForRestSlot(`获取账户快照 (${account.name})`);
+    
+    const client = new USDMClient({ api_key: account.apiKey, api_secret: account.apiSecret });
+    const mainClient = new MainClient({ api_key: account.apiKey, api_secret: account.apiSecret });
+
+    try {
+      const [futuresAccount, spotAccount] = await Promise.all([
+        client.getAccountInformation(),
+        mainClient.getAccountInformation()
+      ]);
+
+      const balances: any[] = [];
+      
+      // Futures balances
+      if (futuresAccount.assets) {
+        futuresAccount.assets.forEach((a: any) => {
+          if (parseFloat(a.walletBalance) > 0) {
+            balances.push({
+              asset: a.asset,
+              balance: a.walletBalance,
+              available: a.availableBalance,
+              type: 'futures'
+            });
+          }
+        });
+      }
+
+      // Spot balances
+      if (spotAccount.balances) {
+        spotAccount.balances.forEach((b: any) => {
+          if (parseFloat(b.free) > 0 || parseFloat(b.locked) > 0) {
+            balances.push({
+              asset: b.asset,
+              balance: (parseFloat(b.free) + parseFloat(b.locked)).toString(),
+              available: b.free,
+              type: 'spot'
+            });
+          }
+        });
+      }
+
+      const positions = (futuresAccount.positions || [])
+        .filter((p: any) => parseFloat(p.positionAmt) !== 0)
+        .map((p: any) => ({
+          symbol: p.symbol,
+          amount: p.positionAmt,
+          entryPrice: p.entryPrice,
+          markPrice: p.markPrice,
+          pnl: p.unrealizedProfit
+        }));
+
+      accountStates[accountId] = {
+        balances,
+        positions,
+        orders: accountStates[accountId]?.orders || [],
+        lastUpdate: Date.now()
+      };
+
+      io.to(accountId).emit("binance_initial_data", {
+        accountId,
+        accountName: account.name,
+        ...accountStates[accountId]
+      });
+
+      addLog(accountId, 'info', `账户快照更新成功 (${account.name})`);
+    } catch (e: any) {
+      console.error(`[Update State] Error for ${account.name}:`, e.message);
+      addLog(accountId, 'error', `获取账户快照失败 (${account.name}): ${e.message}`);
+      if (isRateLimitError(e)) {
+        handleRateLimit(accountId, e.message);
+      }
+    }
+  }
 
   function isQuietPeriod() {
     const now = new Date();
@@ -283,9 +365,16 @@ async function startServer() {
   let apiStatus = "Connected";
   let serverIp = "REST Disabled";
 
-  // Fetch server IP disabled as per user request to eliminate all REST calls
+  // Fetch server IP
   const fetchServerIp = async () => {
-    serverIp = "REST Disabled";
+    try {
+      const response = await axios.get("https://api.ipify.org?format=json", { timeout: 5000 });
+      serverIp = response.data.ip;
+      console.log(`[System] Server Public IP: ${serverIp}`);
+    } catch (e: any) {
+      console.error("[System] Failed to fetch server IP:", e.message);
+      serverIp = "Fetch Failed";
+    }
   };
   fetchServerIp();
 
@@ -549,6 +638,7 @@ async function startServer() {
     };
 
     wsClient.on("formattedMessage", (data: any) => {
+      lastWsMessageTime[account.id] = Date.now();
       const state = accountStates[account.id];
       if (state) {
         if (data.eventType === 'ACCOUNT_UPDATE') {
@@ -657,8 +747,8 @@ async function startServer() {
     });
 
     socket.on("refresh_data", async (accountId) => {
-      // Manual refresh disabled for active REST fetching
-      console.log(`[Socket] Manual refresh requested for ${accountId}, but REST fetching is disabled.`);
+      console.log(`[Socket] Manual refresh requested for ${accountId}`);
+      await updateLocalState(accountId);
     });
 
     socket.on("unsubscribe", (accountId) => {
@@ -673,7 +763,10 @@ async function startServer() {
     for (const account of dbAccounts) {
       if (account.isActive) {
         initAccountWS(account);
-        // updateLocalState calls removed as per user request
+        // Fetch initial state via REST
+        updateLocalState(account.id);
+        // Staggered delay to respect the 27s queue and avoid burst
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
   };
@@ -687,6 +780,20 @@ async function startServer() {
     const min = now.getMinutes();
     const sec = now.getSeconds();
     
+    if (sec === 18 && min !== lastPolledMinute) {
+      lastPolledMinute = min;
+      const activeAccounts = accounts.filter(a => a.isActive);
+      if (activeAccounts.length > 0) {
+        if (pollingAccountIndex >= activeAccounts.length) {
+          pollingAccountIndex = 0;
+        }
+        const account = activeAccounts[pollingAccountIndex];
+        console.log(`[Minute Polling] ${now.toLocaleTimeString()}: Polling account ${account.name} (Index: ${pollingAccountIndex}/${activeAccounts.length})`);
+        updateLocalState(account.id);
+        pollingAccountIndex = (pollingAccountIndex + 1) % activeAccounts.length;
+      }
+    }
+
     if (min !== lastProcessedMin) {
       lastProcessedMin = min;
       
@@ -726,6 +833,25 @@ async function startServer() {
           }
         });
       }
+
+      // 4. WebSocket Activity Monitor (Check every minute)
+      accounts.forEach(account => {
+        if (account.isActive && wsClients[account.id]) {
+          const lastMsg = lastWsMessageTime[account.id] || 0;
+          const nowMs = Date.now();
+          // If no message for 15 minutes, reconnect (could be a dead connection)
+          if (lastMsg > 0 && (nowMs - lastMsg > 900000)) {
+            console.log(`[WS Monitor] No activity for ${account.name} in 15m. Reconnecting...`);
+            addLog(account.id, 'warn', `检测到 WebSocket 15分钟无活动，正在尝试重连 (${account.name})`);
+            closeAccountWS(account.id);
+            setTimeout(() => {
+              initAccountWS(account);
+              updateLocalState(account.id);
+            }, 2000);
+            lastWsMessageTime[account.id] = nowMs; // Reset timer
+          }
+        }
+      });
     }
   }, 1000);
 
