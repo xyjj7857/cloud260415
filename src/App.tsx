@@ -92,6 +92,7 @@ export default function App() {
   const [isQueryingHistory, setIsQueryingHistory] = useState(false);
   const [startDate, setStartDate] = useState(format(subDays(new Date(), 7), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [timeStatsMode, setTimeStatsMode] = useState<'00' | '58'>('00');
   const [socket, setSocket] = useState<Socket | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [systemStatus, setSystemStatus] = useState({ apiStatus: 'Checking...', wsStatus: 'Checking...', serverIp: '...' });
@@ -612,7 +613,12 @@ export default function App() {
     }));
 
     historyData.forEach(h => {
-      const hour = new Date(h.openTime).getHours();
+      let openTime = new Date(h.openTime);
+      if (timeStatsMode === '58') {
+        // Shift forward by 2 seconds: 23:59:58 becomes 00:00:00
+        openTime = new Date(openTime.getTime() + 2000);
+      }
+      const hour = openTime.getHours();
       const tradePnL = parseFloat(h.realizedPnL || h.realizedPnl || '0');
       const fee = parseFloat(h.commission || '0');
       const funding = parseFloat(h.fundingFee || '0');
@@ -625,7 +631,7 @@ export default function App() {
       }
     });
     return stats;
-  }, [historyData]);
+  }, [historyData, timeStatsMode]);
 
   const exportToExcel = () => {
     if (historyData.length === 0) return;
@@ -1228,11 +1234,25 @@ export default function App() {
 
                 {historyData.length > 0 && (
                   <Card className="border-neutral-200 shadow-sm mb-6">
-                    <CardHeader className="pb-3 border-b border-neutral-100 bg-neutral-50/50">
+                    <CardHeader className="pb-3 border-b border-neutral-100 bg-neutral-50/50 flex flex-row items-center justify-between space-y-0">
                       <CardTitle className="text-sm font-bold flex items-center gap-2">
                         <Clock className="w-4 h-4 text-blue-500" />
                         分时段交易统计 (24小时分布)
                       </CardTitle>
+                      <div className="flex items-center gap-1 bg-neutral-100 p-0.5 rounded-lg border border-neutral-200">
+                        <button 
+                          onClick={() => setTimeStatsMode('00')}
+                          className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${timeStatsMode === '00' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}
+                        >
+                          00开始
+                        </button>
+                        <button 
+                          onClick={() => setTimeStatsMode('58')}
+                          className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${timeStatsMode === '58' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}
+                        >
+                          58开始
+                        </button>
+                      </div>
                     </CardHeader>
                     <CardContent className="p-0">
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 divide-x divide-y divide-neutral-100">
